@@ -1,4 +1,3 @@
 Sudoku-Solver
 =============
-
-sudoku solver using dancing links
+Javascript Sudoku solver using dancing links. It was fun to write.
