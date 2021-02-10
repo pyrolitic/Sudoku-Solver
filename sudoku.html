@@ -1,35 +1,40 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 
 <html>
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-		<link rel="stylesheet" type="text/css" href="style.css" />
 
-		<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
-		<script type="text/javascript" src="sudoku.js"></script>
-		<script type="text/javascript" src="sudoku_ui.js"></script>
-	</head>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <link rel="stylesheet" type="text/css" href="style.css" />
 
-	<body>
-		<div id="header" class="frame">
-			<h1 id="display_title">Sudoku Solver</h1>
-		</div>
+    <!--script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script-->
+    <script type="text/javascript" src="sudoku.js"></script>
+    <script type="text/javascript" src="sudoku_ui.js"></script>
+</head>
 
-		<div class="frame">
-			</br>
-			<canvas id="sudoku_canvas" width=500 height=500 tabindex="0">
+<body>
+    <div id="header" class="frame">
+        <h1 id="display_title">Sudoku Solver</h1>
+    </div>
+
+    <div class="frame">
+        <div class="slider_container">
+            <input type="range" min="2" max="16" value="9" class="slider" id="size_slider">
+            <label id="size_indicator">9</label>
+        </div>
+
+        </br>
+        <canvas id="sudoku_canvas" width=500 height=500 tabindex="0">
 				No canvas support. Get a real browser.
 			</canvas>
-			</br>
-			Click on the grid or use the arrow keys to move the selection box. 
-			Use the numeric or numpad keys to change the cells, and use delete or backspace to erase them.
-			Press s to solve the board and c to clear it.
-		</div>
+        </br>
+        Click on the grid or use the arrow keys to move the selection box. Use the numeric or numpad keys to change the cells, and use delete or backspace to erase them. Drag a cell to expand the area of a section. Type Shift+Number to change the current cell
+        the that section. Press s to solve the board and c to clear it.
+    </div>
 
-		<div class="frame"> 
-			<button id="clear">Clear</button>
-			<button id="solve">Solve</button>
-		</div>
-	</body>
+    <div class="frame">
+        <button id="clear">Clear</button>
+        <button id="solve">Solve</button>
+    </div>
+</body>
 
 </html>

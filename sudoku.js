@@ -1,22 +1,32 @@
-'use strict';
+"use strict";
 
-function Node(head, l, t){
-	this.left = l;
-	this.right = null;
-	this.up = t;
-	this.down = null;
+class Node {
+    constructor(head, l, t) {
+        this.left = l;
+        this.right = null;
+        this.up = t;
+        this.down = null;
 
-	this.header = head;
+        this.header = head;
+    }
 }
 
-function HeaderNode(id, l, type){
-	this.left = l;
-	this.right = null;
-	this.up = null;
-	this.down = null;
+class HeaderNode {
+    constructor(id, l, type) {
+        this.left = l;
+        this.right = null;
+        this.up = null;
+        this.down = null;
 
-	this.type = type;
-	this.id = id; //either position, quadrant or symbol	
+        this.type = type;
+        this.id = id; //either position, section or symbol	
+    }
+}
+
+class Error {
+    constructor(msg) {
+        this.msg = msg;
+    }
 }
 
 //based on Donald Knuth's Dancing Links algorithm
@@ -25,267 +35,284 @@ function HeaderNode(id, l, type){
 //board - sudoku board
 //matrix - DLX matrix
 //row, column - of the matrix, not board
-//symbol - number on a tile
+//symbol - number on a tile, 1 based for input and 0 based in solver
+//section - index of cell (3x3 in 9x9 sudoku), 0 based
 
 //assumes board is valid (or blank), and not solved; returns additions as a board-wide array
-//board must be either a string of 1 digit number with no spaces or an array, both of 81 elements long. 0 for blank space.
-function solve(board){
-	//parse board
-	var fixed = new Array(9); //[[x, y, quadrant id], ...]
-	for (var i = 0; i < 9; i++) fixed[i] = new Array();
+//board must be either a string of 1 digit number with no spaces or an array, both of SZ*SZ elements long. 0 for blank space.
+function solve(SZ, board, sections) {
+    if (board.length != SZ * SZ) throw new Error("Bad size board");
+    if (sections.length != SZ * SZ) throw new Error("Bad sections map size");
 
-	for (var y = 0; y < 9; y++){
-		for (var x = 0; x < 9; x++){
-			var i = x + y * 9;
-			var symbol = board[i];
-			if (symbol != 0){
-				var q = Math.floor(x / 3) + Math.floor(y / 3) * 3;
-				fixed[symbol - 1].push(x, y, q);
-			}
-		}
-	}
-	
-	//flags (3 per row): (x * 9 + sym) 0 .. 80 | (y * 9 + sym) 0 .. 80 | (quadrant * 9 + sym) 0 .. 80 | 
-	//the location nodes mark the place where each of the 9 items is located,
-	//while the name node tells what number(label) each item is.
-	
-	var cols = 81 * 4; //in the matrix
+    // validate sections
+    let sectContents = new Array(SZ); //cells belonging to each section
+    let symbolOnRow = new Array(SZ);
+    let symbolOnCol = new Array(SZ);
+    let symbolInSect = new Array(SZ);
 
-	//the root exists on the top row, to the left of the leftmost header node.
-	//it has no up/down links, but otherwise is a normal header node
-	var root = new HeaderNode("root", null, "root");
+    for (let q = 0; q < SZ; q++) {
+        sectContents[q] = new Array();
+        symbolOnRow[q] = new Set();
+        symbolOnCol[q] = new Set();
+        symbolInSect[q] = new Set();
+    }
 
-	//the top row, to the right of the root, is the header nodes, one for every column
-	var header = new Array(cols);
-	var h = root;
-	
-	for (var i = 0; i < cols; i++){
-		var n;
-		if (i >= 81) {
-			if (i >= 81 * 2) n = new HeaderNode(i - 81 * 2, h, "quadrant");
-			else n = new HeaderNode(i - 81, h, "col");
-		}
-		else n = new HeaderNode(i, h, "row");
-		
-		header[i] = n;
-		h.right = n;
-		h = n;
-	}
+    for (let i = 0; i < SZ * SZ; i++) {
+        let x = i % SZ;
+        let y = (i / SZ) | 0;
+        let n = sections[i];
+        if (n < 0 || n >= SZ) {
+            throw new Error(`bad section identifier: ${n}`);
+        }
+        sectContents[n].push([x, y]);
 
-	h.right = root;
-	root.left = h;
+    }
+    let anySize = sectContents[0].length;
+    for (let [, con] of sectContents.entries()) {
+        if (con.length != anySize) {
+            throw new Error("section sizes do not match");
+        }
+    }
 
-	var ruler = new Array(cols); //contains the bottom-most nodes created
-	for (var i = 0; i < cols; i++) ruler[i] = header[i];
-	
-	//sym is 0 based here
-	var insert = function(x, y, quadrant, sym, header, ruler){
-		var p = y * 9 + x;
-		var r = x * 9 + sym + 81;
-		var c = y * 9 + sym + 81 * 2;
-		var q = quadrant * 9 + sym + 81 * 3;
-		
-		var posFlag = new Node(header[p], null, ruler[p]);
-		posFlag.up = ruler[p];
-		ruler[p].down = posFlag;
-		
-		var rowFlag = new Node(header[r], posFlag, ruler[r]);
-		rowFlag.up = ruler[r];
-		ruler[r].down = rowFlag;
+    //flags (4 per row):
+    // 1. position, SZ^2
+    // 2. symbol*col, SZ^2
+    // 3. symbol*row, SZ^2
+    // 4. symbol*section, SZ^2
 
-		var colFlag = new Node(header[c], rowFlag, ruler[c]);
-		colFlag.up = ruler[c];
-		ruler[c].down = colFlag;
-		
-		var quadFlag = new Node(header[q], colFlag, ruler[q]);
-		quadFlag.up = ruler[q];
-		ruler[q].down = quadFlag;
-		
-		posFlag.left = quadFlag;
-		posFlag.right = rowFlag;
-		rowFlag.right = colFlag;
-		colFlag.right = quadFlag;
-		quadFlag.right = posFlag;
+    // (x * SZ + sym) x SZ^2 | (y * SZ + sym) x SZ^2 | (section * SZ + sym) x SZ^2 |
+    //the location nodes mark the place where each of the SZ items is located,
+    //while the name node tells what number(label) each item is.
 
-		//slide down
-		ruler[p] = posFlag;
-		ruler[r] = rowFlag;
-		ruler[c] = colFlag;
-		ruler[q] = quadFlag;
+    let cols = SZ * SZ * 4; //in the matrix
 
-		/*var str = '';
-		for (var i = 0; i < 81 * 3; i++){
-			if (i == r) str += 'r';
-			else if (i == c) str += 'c';
-			else if (i == q) str += 'q';
-			else if (i % 81 == 0) str += '|';
-			else str += ' ';
-		}
-		console.log(str);*/
-	};
+    //the root exists on the top row, to the left of the leftmost header node.
+    //it has no up/down links, but otherwise is a normal header node
+    let root = new HeaderNode("root", null, "root");
 
-	var rows = 0;
+    //the top row, to the right of the root, is the header nodes, one for every column
+    let header = new Array(cols);
+    let h = root;
 
-	//first insert the fixed numbers
-	for (var i = 0; i < 9; i++){
-		var a = fixed[i];
-		for (var e = 0; e < a.length; e += 3){
-			var x = a[e + 0];
-			var y = a[e + 1];
-			var q = a[e + 2];
+    for (let i = 0; i < cols; i++) {
+        let n;
+        let j = i % (SZ * SZ);
+        switch ((i / (SZ * SZ)) | 0) {
+            case 0:
+                n = new HeaderNode(j, h, "position");
+                break;
+            case 1:
+                n = new HeaderNode(j, h, "row");
+                break;
+            case 2:
+                n = new HeaderNode(j, h, "col");
+                break;
+            case 3:
+                n = new HeaderNode(j, h, "section");
+                break;
+        }
+        header[i] = n;
+        h.right = n;
+        h = n;
+    }
 
-			insert(x, y, q, i, header, ruler);
-			rows++;
-		}
-	}
+    h.right = root;
+    root.left = h;
 
-	//generate the matrix rows, considering every possible position for each symbol,
-	//ensuring that each row is in itself legal, meaning that the same number does not appear more than once
-	//for each row or column (of the sudoku grid, not the matrix)
-	for (var i = 0; i < 9; i++){
-		var a = fixed[i];
-		
-		//for each of the 9 quadrants
-		for (var qy = 0; qy < 3; qy++){
-			for (var qx = 0; qx < 3; qx++){
-				var q =	qx + qy * 3;
+    let ruler = new Array(cols); //contains the bottom-most nodes created
+    for (let i = 0; i < cols; i++) ruler[i] = header[i];
 
-				//illegal if in the same quadrant there is a fixed cell with the same symbol
-				var legal = true;
-				for (var e = 0; e < a.length; e += 3){
-					if (q == a[e + 2]){
-						legal = false;
-						break;
-					}
-				}
-			
-				if (!legal) continue;
+    //sym is 0 based here
+    let insert = function(x, y, section, sym) {
+        //column of each node
+        let pi = y * SZ + x;
+        let ri = x * SZ + sym + SZ * SZ;
+        let ci = y * SZ + sym + SZ * SZ * 2;
+        let si = section * SZ + sym + SZ * SZ * 3;
 
-				//locally within each quadrant
-				for (var ly = 0; ly < 3; ly++){
-					for(var lx = 0; lx < 3; lx++){
-						var x = qx * 3 + lx;
-						var y = qy * 3 + ly;
-						legal = true;
+        //create nodes and link them to each other and ruler
+        let posFlag = new Node(header[pi], null, ruler[pi]);
+        posFlag.up = ruler[pi];
+        ruler[pi].down = posFlag;
 
-						//illegal if on the same row or column (or on the same spot) as a fixed symbol
-						for (var e = 0; e < a.length; e += 3){
-							if (x == a[e + 0] || y == a[e + 1]){
-								legal = false;
-								break;
-							}
-						}
+        let rowFlag = new Node(header[ri], posFlag, ruler[ri]);
+        rowFlag.up = ruler[ri];
+        ruler[ri].down = rowFlag;
 
-						//if there are no collision with fixed cells, insert the new row
-						if (legal){
-							insert(x, y, q, i, header, ruler);
-							rows++;
-						}
-					}
-				}
-			}
-		}			
-	}
-	
-	console.log("there are " + cols + " cols");
+        let colFlag = new Node(header[ci], rowFlag, ruler[ci]);
+        colFlag.up = ruler[ci];
+        ruler[ci].down = colFlag;
 
-	//now link all the columns at the top and bottom
-	for (var i = 0; i < cols; i++){
-		header[i].up = ruler[i];
-		ruler[i].down = header[i];
-	}
+        let quadFlag = new Node(header[si], colFlag, ruler[si]);
+        quadFlag.up = ruler[si];
+        ruler[si].down = quadFlag;
 
-	//a little sanity check
-	for (var r = root.right.down; r != root.right; r = r.down){
-		for (var c = r.right; c != r; c = c.right){
-			var v = 1;
-			for (var row = c.right; row != c; row = row.right) v++;
-			if (v != 4)
-				alert("v not 3");
-		}
-	}
+        posFlag.left = quadFlag;
+        posFlag.right = rowFlag;
+        rowFlag.right = colFlag;
+        colFlag.right = quadFlag;
+        quadFlag.right = posFlag;
 
-	//now get solving
-	var complete = new Array(81);
-	for (var i = 0; i < 81; i++) complete[i] = 0;
+        //slide down
+        ruler[pi] = posFlag;
+        ruler[ri] = rowFlag;
+        ruler[ci] = colFlag;
+        ruler[si] = quadFlag;
 
-	//a container to hold whether the thing was solved
-	var solved = {
-		done : false
-	};
+        /*let str = '';
+        for (let i = 0; i < SZ * SZ * 4 + 1; i++) {
+            if (i % (SZ * SZ) == 0) str += '|';
+            if (i == pi) str += 'p';
+            else if (i == ri) str += 'r';
+            else if (i == ci) str += 'c';
+            else if (i == si) str += 's';
+            else str += ' ';
+        }
+        console.log(str);*/
+    };
 
-	var solutionRows = new Array(cols); //references to rows
-	solveSearch(root, 0, solutionRows, complete, solved);
-	
-	return complete;
+    let rows = 0;
+
+    //parse board and insert fixed numbers
+    let fixed = new Array(SZ); //[[x, y, section id], ...]
+    for (let i = 0; i < SZ; i++) fixed[i] = new Array();
+
+    for (let y = 0; y < SZ; y++) {
+        for (let x = 0; x < SZ; x++) {
+            let i = x + y * SZ;
+            let symbol = board[i] - 1;
+            if (symbol != -1) {
+                let sect = sections[i];
+                insert(x, y, sect, symbol);
+                symbolOnRow[symbol].add(y);
+                symbolOnCol[symbol].add(x);
+                symbolInSect[symbol].add(sect);
+            }
+        }
+    }
+
+    //generate the matrix rows, considering every possible position for each symbol,
+    //ensuring that each row is in itself legal, meaning that the same number does not appear more than once
+    //for each possible symbol
+    for (let sym = 0; sym < SZ; sym++) {
+        //for each of the SZ sections
+        for (let sect = 0; sect < SZ; sect++) {
+            //illegal if in the same section there is a fixed cell with the same symbol
+            if (symbolInSect[sym].has(sect)) continue;
+
+            //locally within each section
+            for (let [x, y] of sectContents[sect]) {
+                //cannot overlap with an existing fixed symbol
+                if (board[y * SZ + x] != 0) continue;
+
+                //illegal if on the same row or column (or on the same spot) as a fixed symbol
+                if (symbolOnCol[sym].has(x) || symbolOnRow[sym].has(y)) continue;
+
+                //if there are no collision with fixed cells, insert the new row
+                insert(x, y, sect, sym);
+                rows++;
+            }
+        }
+    }
+
+    console.log(`there are ${cols} cols and ${rows} non-fixed rows`);
+
+    //now link all the columns at the top and bottom
+    for (let i = 0; i < cols; i++) {
+        header[i].up = ruler[i];
+        ruler[i].down = header[i];
+    }
+
+    //a little sanity check
+    for (let r = root.right.down; r != root.right; r = r.down) {
+        for (let c = r.right; c != r; c = c.right) {
+            let v = 1;
+            for (let row = c.right; row != c; row = row.right) v++;
+            if (v != 4)
+                alert("v not 3");
+        }
+    }
+
+    //now get solving
+    let complete = new Array(SZ * SZ);
+    for (let i = 0; i < SZ * SZ; i++) complete[i] = 0;
+
+    //a container to hold whether the thing was solved
+    let solved = {
+        done: false
+    };
+
+    let solutionRows = new Array(cols); //references to rows
+    solveSearch(SZ, root, 0, solutionRows, complete, solved);
+
+    return complete;
 }
 
-function cover(column){
-	//remove self
-	column.right.left = column.left; 
-	column.left.right = column.right;
+function cover(column) {
+    //remove self
+    column.right.left = column.left;
+    column.left.right = column.right;
 
-	for (var r = column.down; r != column; r = r.down){
-		for (var c = r.right; c != r; c = c.right){
-			//remove each cell
-			c.up.down = c.down;
-			c.down.up = c.up;
-		}
-	}
+    for (let r = column.down; r != column; r = r.down) {
+        for (let c = r.right; c != r; c = c.right) {
+            //remove each cell
+            c.up.down = c.down;
+            c.down.up = c.up;
+        }
+    }
 }
 
-function uncover(column){
-	for (var c = column.up; c != column; c = c.up){
-		for (var r = c.left; r != c; r = r.left){
-			r.up.down = r;
-			r.down.up = r;
-		}
-	}
+function uncover(column) {
+    for (let c = column.up; c != column; c = c.up) {
+        for (let r = c.left; r != c; r = r.left) {
+            r.up.down = r;
+            r.down.up = r;
+        }
+    }
 
-	column.right.left = column;
-	column.left.right = column;
+    column.right.left = column;
+    column.left.right = column;
 }
 
-function solveSearch(root, k, partial, solution, done){
-	if (done.done) return;
+function solveSearch(SZ, root, k, partial, solution, done) {
+    if (done.done) return;
 
-	if (root.right == root || root.left == root){
-		//solution found
+    if (root.right == root || root.left == root) {
+        //solution found
 
-		for(var i = 0; i < k; i++){
-			var n = partial[i];
+        for (let i = 0; i < k; i++) {
+            let n = partial[i];
 
-			//get the symbol flag
-			while(n.header.type != "quadrant") n = n.left;
-			var sym = n.header.id % 9 + 1;
-			n = n.right;
-			
-			//n should now be the position flag
-			solution[n.header.id] = sym;
-		}
-			
-		done.done = true;
-		return;
-	}
+            //get the symbol flag
+            while (n.header.type != "section") n = n.left;
+            let sym = n.header.id % SZ + 1;
+            n = n.right;
 
-	// this is supposed to pick the column with the fewest nodes uncovered, but I couldn't get that working in my previous implementation
-	// and it's fast enough anyway
-	var col = root.right;
-	
-	cover(col);
-	
-	for (var row = col.down; row != col; row = row.down){
-		partial[k] = row;
-		
-		for (var n = row.right; n != row; n = n.right)
-			cover(n.header);
+            //n should now be the position flag
+            solution[n.header.id] = sym;
+        }
 
-		solveSearch(root, k + 1, partial, solution, done);
-	
-		for (var n = row.left; n != row; n = n.left)
-			uncover(n.header);
-	}
+        done.done = true;
+        return;
+    }
 
-	uncover(col);
+    // this is supposed to pick the column with the fewest nodes uncovered, but I couldn't get that working in my previous implementation
+    // and it's fast enough anyway
+    let col = root.right;
+
+    cover(col);
+
+    for (let row = col.down; row != col; row = row.down) {
+        partial[k] = row;
+
+        for (let n = row.right; n != row; n = n.right)
+            cover(n.header);
+
+        solveSearch(SZ, root, k + 1, partial, solution, done);
+
+        for (let n = row.left; n != row; n = n.left)
+            uncover(n.header);
+    }
+
+    uncover(col);
 }
-
