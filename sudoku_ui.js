@@ -28,9 +28,12 @@ const sectColEnds = [
     [0x2a, 0x9d, 0x8f] //down
 ];
 
+const maxSize = 16;
+const maxCellBase = maxSize + 1;
+
 class Board {
     constructor(canvasContext) {
-        this.size = 9; //per side
+        this.size = 0; //per side
 
         // 3 layers of data, all 1 based:
         // on a classic 9x9 sudoku, this is a 3x3 cell
@@ -73,6 +76,8 @@ class Board {
         this.errorCol = "rgb(255, 60, 60)";
         this.fixedCol = "rgb(50, 50, 50)";
         this.completedCol = "rgb(80, 120, 190)";
+
+        this.solutionGen = null;
     }
 
     errorColStage(x) {
@@ -97,6 +102,35 @@ class Board {
             }
         }
 
+        //the selection highlighter
+        //this.context.globalCompositeOperation = "lighter";
+        //let selSect = this.sectionPlusDrag[this.sY * this.size + this.sX];
+        //let selCol = this.sectionCols[selSect];
+        //this.context.strokeStyle = "rgb(" + (255 - selCol[0]) + "," + (255 - selCol[1]) + "," + (255 - selCol[2]) + ")";
+        this.context.strokeStyle = "rgb(40, 40, 40)";
+        this.context.lineWidth = 1;
+        this.context.beginPath();
+        let d = 2;
+        for (; d < this.f; d += 7) {
+            this.context.moveTo(this.sX * this.f + d, this.sY * this.f);
+            this.context.lineTo(this.sX * this.f, this.sY * this.f + d);
+
+            this.context.moveTo((this.sX + 1) * this.f - d, this.sY * this.f);
+            this.context.lineTo((this.sX + 1) * this.f, this.sY * this.f + d);
+        }
+        for (; d < 2 * this.f; d += 7) {
+            let over = d - this.f;
+            this.context.moveTo((this.sX + 1) * this.f, this.sY * this.f + over);
+            this.context.lineTo(this.sX * this.f + over, (this.sY + 1) * this.f);
+
+            this.context.moveTo(this.sX * this.f, this.sY * this.f + over);
+            this.context.lineTo((this.sX + 1) * this.f - over, (this.sY + 1) * this.f);
+        }
+
+        this.context.closePath();
+        this.context.stroke();
+
+        //the section borders
         this.context.strokeStyle = "rgba(0, 0, 0, 255)";
         this.context.lineWidth = 5;
         this.context.beginPath();
@@ -146,6 +180,7 @@ class Board {
         }
 
         //now the numbers
+        this.context.strokeStyle = "rgba(0, 0, 0, 255)";
         this.context.font = ((45 * 9 / this.size) | 0) + "pt Helvetica";
         for (let j = 0; j < this.size; j++) {
             for (let i = 0; i < this.size; i++) {
@@ -170,12 +205,6 @@ class Board {
                 }
             }
         }
-
-        //now the selection
-        //this.context.globalCompositeOperation = "lighter";
-        this.context.strokeStyle = "rgba(180, 100, 90, 255)";
-        this.context.lineWidth = 5;
-        this.context.strokeRect(this.sX * this.f, this.sY * this.f, this.f, this.f);
     }
 
     updateSections() {
@@ -205,7 +234,7 @@ class Board {
         this.reset();
     }
 
-    setGrid(sz, grid, sect) {
+    setGrid(sz, sect, grid) {
         this.setSize(sz);
         for (let i = 0; i < this.size * this.size; i++) {
             this.data[i] = grid[i];
@@ -223,17 +252,13 @@ class Board {
             this.additions[i] = 0;
         }
         this.state = "adding";
+        this.solutionGen = null;
     }
 
     reset() {
-        this.resetAdditions();
+        this.clear();
 
-        for (let i = 0; i < this.size * this.size; i++) {
-            this.data[i] = 0;
-            this.errorTimer[i] = 0;
-        }
-
-        //create some sections
+        //create some sections, can't guarantee they're all the same size
         //this will only properly work when size is a power of 2 so it can be split into an even grid
         let sectCols = Math.ceil(Math.sqrt(this.size));
         let numWholeRows = (this.size / sectCols) | 0;
@@ -249,10 +274,6 @@ class Board {
 
             this.section[i] = si;
             this.sectionPlusDrag[i] = si;
-        }
-
-        for (let i = 0; i < this.size; i++) {
-            this.sectionSize[i] = 0;
         }
 
         //reset section colours
@@ -271,6 +292,17 @@ class Board {
         this.state = "adding";
     }
 
+    clear() {
+        this.resetAdditions();
+        for (let i = 0; i < this.size * this.size; i++) {
+            this.data[i] = 0;
+            this.errorTimer[i] = 0;
+        }
+        for (let i = 0; i < this.size; i++) {
+            this.sectionSize[i] = 0;
+        }
+    }
+
     update() {
         if (this.state === "adding") {
             for (let i = 0; i < this.size * this.size; i++) {
@@ -285,16 +317,25 @@ class Board {
         //clear error timers
         for (let i = 0; i < this.size * this.size; i++) this.errorTimer[i] = 0;
 
+        if (this.solutionGen == null) {
+            this.solutionGen = solve(this.size, this.data, this.section); //see sudoku.js
+        }
+
         let begin = new Date().getTime();
-        let complete = solve(this.size, this.data, this.section); //see sudoku.js
+        let solution = this.solutionGen.next();
         let elapsed = new Date().getTime() - begin;
         console.log("that took " + elapsed + " milliseconds");
 
-        for (let i = 0; i < this.size * this.size; i++) {
-            if (this.data[i] == 0) this.additions[i] = complete[i];
+        if (solution.done) {
+            if (this.state == "solved") this.state = "solutions_exhausted";
+            else this.state = "unsolvable";
+            this.solutionGen = null;
+        } else {
+            for (let i = 0; i < this.size * this.size; i++) {
+                if (this.data[i] == 0) this.additions[i] = solution.value[i];
+            }
+            this.state = "solved";
         }
-
-        this.state = "solved";
     }
 
     moveLeft() {
@@ -346,7 +387,7 @@ class Board {
                 d = Math.max(this.dsY, this.dlY);
             let l = Math.min(this.dsX, this.dlX),
                 r = Math.max(this.dsX, this.dlX);
-            console.log(`mouseMove undo (${l}, ${u})-(${r}, ${d})`);
+            //console.log(`mouseMove undo (${l}, ${u})-(${r}, ${d})`);
             for (let i = u; i <= d; i++) {
                 for (let j = l; j <= r; j++) {
                     this.sectionPlusDrag[i * this.size + j] = this.section[i * this.size + j];
@@ -356,7 +397,7 @@ class Board {
             //set new dragging fill
             u = Math.min(this.sY, this.dsY), d = Math.max(this.sY, this.dsY);
             l = Math.min(this.sX, this.dsX), r = Math.max(this.sX, this.dsX);
-            console.log(`mouseMove fill (${l}, ${u})-(${r}, ${d})`);
+            //console.log(`mouseMove fill (${l}, ${u})-(${r}, ${d})`);
             let ds = this.section[this.dsY * this.size + this.dsX];
             for (let i = u; i <= d; i++) {
                 for (let j = l; j <= r; j++) {
@@ -382,7 +423,8 @@ class Board {
         if (this.state == 'solved') this.state = 'adding';
         let old = this.section[this.sX + this.sY * this.size];
         if (sym == old) return;
-        this.section[this.sX + this.sY * this.size] = sym;
+        let i = this.sX + this.sY * this.size;
+        this.section[i] = this.sectionPlusDrag[i] = sym;
         //clear both old and new sections
         this.clearSections(new Set([old, sym]));
         this.updateSections();
@@ -434,10 +476,47 @@ function numericKey(code) {
     else return 0;
 }
 
+function validateData(size, sections, board) {
+    if (size < 2 || size > maxSize) return false;
+    if (sections.length != size * size) return false;
+    if (sections.length != board.length) return false;
+    if (board.length < 1 || board.length > maxSize * maxSize) return false;
+    for (let s of sections) {
+        if (typeof s !== "number" || s != (s | 0) || s < 0 || s >= maxSize) return false;
+    }
+    for (let n of board) {
+        if (typeof n !== "number" || n != (n | 0) || n < 0 || n > maxCellBase) return false;
+    }
+    return true;
+}
+
+function makeHash(sections, board) {
+    return (sections.map(s => s.toString(maxSize)).join("") +
+        "-" + board.map(s => s.toString(maxCellBase)).join(""));
+}
+
+function parseHash(str) {
+    let m = str.match(/^#?([A-Za-z0-9]+)-([A-Za-z0-9]+)$/);
+    if (m) {
+        let sections = m[1].split("").map(s => Number.parseInt(s, maxSize));
+        let board = m[2].split("").map(s => Number.parseInt(s, maxCellBase));
+        let size = Math.sqrt(sections.length) | 0;
+        if (validateData(size, sections, board)) {
+            return [size, sections, board];
+        }
+    }
+    console.log(`failed to parse hash`);
+    return null;
+}
+
 window.onload = () => {
     let canvas = document.getElementById("sudoku_canvas");
     let solveButton = document.getElementById("solve");
+    let resetButton = document.getElementById("reset");
     let clearButton = document.getElementById("clear");
+    let textButton = document.getElementById("text");
+    let textOut = document.getElementById("text_out");
+    let stateIndicator = document.getElementById("state_indicator");
     let sizeSlider = document.getElementById("size_slider");
     let sizeIndicator = document.getElementById("size_indicator");
 
@@ -460,80 +539,97 @@ window.onload = () => {
         else if (event.code == "ArrowRight") board.moveRight();
         else if (event.code == "ArrowDown") board.moveDown();
 
-        else if (event.key.match(/^[sS]$/)) solveButton.click(); //s
-        else if (event.key.match(/^[cC]$/)) clearButton.click(); //c
+        else if (event.key.match(/^[sS]$/)) solveButton.click();
+        else if (event.key.match(/^[rR]$/)) clearButton.click();
+        else if (event.key.match(/^[tT]$/)) resetButton.click();
         //board.paint();
+        window.location.hash = makeHash(board.section, board.data);
+        stateIndicator.innerText = board.state;
     }
 
     canvas.onmousedown = (event) => {
         board.mouseDown(event.pageX - canvas.offsetLeft, event.pageY - canvas.offsetTop);
+        stateIndicator.innerText = board.state;
     }
 
     canvas.onmouseup = (event) => {
         board.mouseUp(event.pageX - canvas.offsetLeft, event.pageY - canvas.offsetTop);
+        window.location.hash = makeHash(board.section, board.data);
+        stateIndicator.innerText = board.state;
     }
 
     canvas.onmousemove = (event) => {
         board.mouseMove(event.pageX - canvas.offsetLeft, event.pageY - canvas.offsetTop);
+        stateIndicator.innerText = board.state;
+    }
+
+    resetButton.onclick = () => {
+        board.reset();
+        canvas.focus();
+        window.location.hash = makeHash(board.section, board.data);
+        stateIndicator.innerText = board.state;
     }
 
     clearButton.onclick = () => {
-        board.reset();
+        board.clear();
         canvas.focus();
+        window.location.hash = makeHash(board.section, board.data);
+        stateIndicator.innerText = board.state;
     }
 
     solveButton.onclick = () => {
         board.solve();
         canvas.focus();
+        window.location.hash = makeHash(board.section, board.data);
+        stateIndicator.innerText = board.state;
     }
 
     sizeSlider.oninput = (ev) => {
         let sz = Number.parseInt(ev.target.value);
         sizeIndicator.innerText = "" + sz;
         board.setSize(sz);
+        stateIndicator.innerText = board.state;
+        window.location.hash = makeHash(board.section, board.data);
     }
 
-    //populate the board cause it's boring by hand
-    sizeSlider.value = 9;
-    board.setGrid(9, [
-        2, 0, 0, 8, 0, 1, 0, 5, 0,
-        0, 0, 0, 0, 9, 0, 7, 0, 0,
-        0, 0, 5, 0, 0, 2, 0, 0, 8,
-        6, 9, 0, 0, 0, 4, 5, 2, 0,
-        0, 4, 2, 0, 0, 0, 3, 8, 0,
-        0, 5, 8, 2, 0, 0, 0, 4, 6,
-        5, 0, 0, 1, 0, 0, 8, 0, 0,
-        0, 0, 7, 0, 2, 0, 0, 0, 0,
-        0, 1, 0, 9, 0, 3, 0, 0, 4
-    ], [
-        0, 0, 0, 1, 1, 1, 2, 2, 2,
-        0, 0, 0, 1, 1, 1, 2, 2, 2,
-        0, 0, 0, 1, 1, 1, 2, 2, 2,
-        3, 3, 3, 4, 4, 4, 5, 5, 5,
-        3, 3, 3, 4, 4, 4, 5, 5, 5,
-        3, 3, 3, 4, 4, 4, 5, 5, 5,
-        6, 6, 6, 7, 7, 7, 8, 8, 8,
-        6, 6, 6, 7, 7, 7, 8, 8, 8,
-        6, 6, 6, 7, 7, 7, 8, 8, 8,
-    ]);
+    textButton.onclick = () => {
+        if (textOut.hidden) {
+            let txt = "";
+            for (let i = 0; i < board.size * board.size; i++) {
+                if (i % board.size == 0 && i > 0) {
+                    txt += '</br>';
+                }
+                if (board.data[i] > 0) txt += board.data[i].toString(maxCellBase);
+                else if (board.additions[i] > 0) txt += board.additions[i].toString(maxCellBase);
+                else txt += "_";
+            }
+            textOut.hidden = false;
+            textOut.innerHTML = txt;
+        } else {
+            textOut.hidden = true;
+        }
+    }
 
-    /*var section_map = [
-    "0011112222333",
-    "0001112223333",
-    "0000111233333",
-    "0001112223777",
-    "4044552627777",
-    "4445556667777",
-    "4445556667cc7",
-    "444556666cccc",
-    "48895566bbbcc",
-    "888995aabbbcc",
-    "889999aaaabbc",
-    "888999aaabbcc",
-    "888999aaaabbb"
-]*/
+    //e.g. 0011112222333000111222333300001112333330001112223777404455262777744455566677774445556667bb7444556666bbbb48895566aaabb888995ccaaabb889999ccccaab888999cccaabb888999ccccaaa-0a00d300700904000000c07b00600d00c0308000bc20040000000040000000000070580300000005b000200000003000005020080000a000450000c0000000d030b000090000000040002d080000000056a000000
+    if (window.location.hash) {
+        let p = parseHash(window.location.hash);
+        if (p) {
+            let [size, section, data] = p;
+            board.setGrid(size, section, data);
+            sizeSlider.value = size;
+        }
+    } else {
+        board.setSize(9);
+    }
+
+    textOut.hidden = true;
+    stateIndicator.innerText = board.state;
+
+    window.location.hash = makeHash(board.section, board.data);
+    stateIndicator.innerText = board.state;
 
     canvas.focus();
     //update 10 times per second
+    //TODO: paint only when necessary
     window.setInterval(() => { board.update() }, 100);
 }

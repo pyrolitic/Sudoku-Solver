@@ -1,93 +1,58 @@
 a {
-	color: #0000FF;
-	text-decoration: none;
+    color: #0000FF;
+    text-decoration: none;
 }
 
 a:hover {
-	color: #0000FF;
-	font-weight: bold;
+    color: #0000FF;
+    font-weight: bold;
 }
 
 a:visited {
-	color: teal;
+    color: teal;
 }
 
 .error_text {
-	color : #FF0000;
-	font-weight: bold;
+    color: #FF0000;
+    font-weight: bold;
 }
 
 body {
-	text-align: center;
-	font-family: Helvetica, sans-serif;
-	overflow: hidden;
+    text-align: center;
+    font-family: Helvetica, sans-serif;
+    /*overflow: hidden;*/
 }
 
-/*syntax*/
-.syntax_operator {
-	font-weight: bold;
-	color: #1FAAAA;
-}
-
-.syntax_ref {
-	font-weight: normal;
-	color: #AAAAEF;
-}
-
-.syntax_error {
-	font-weight: bold;
-	color: #FFAAAA;
-}
-
-/* the three frames on the screen */
 .frame {
-	margin: 0 auto;
-	width: 550px;
-	margin-top: 10px;
-	margin-bottom: 20px;
-	
-	background: #EEE;
-	
-	box-shadow: 0px 0px 8px #5078BE;
-	-moz-box-shadow: 10px, 10px, 3px, teal;
-	-webkit-box-shadow: 10px, 10px, 3px, teal;
-
-	border-radius: 12px;
-	-moz-border-radius: 7px;
-	-webkit-border-radius: 7px;
-}
-
-.text_input {
-	margin: 0 auto;
-	width: 500px;
-
-	text-align: left;
-	
-	background: #DDD;
+    margin: 0 auto;
+    width: 550px;
+    margin-top: 10px;
+    margin-bottom: 20px;
+    background: #EEE;
+    /*box-shadow: 0px 0px 8px #5078BE;
+    -moz-box-shadow: 10px, 10px, 3px, teal;
+    -webkit-box-shadow: 10px, 10px, 3px, teal;
+    border-radius: 12px;
+    -moz-border-radius: 7px;
+    -webkit-border-radius: 7px;*/
 }
 
 #header {
-	font-weight: bold;
-	font-size: x-large;
-	text-shadow: 1px 1px 2px #5078BE;
+    font-weight: bold;
+    font-size: x-large;
+    text-shadow: 1px 1px 2px #5078BE;
 }
 
 .slider_container {
-	width: 100%;
+    width: 100%;
 }
 
 .slider {
-  -webkit-appearance: none;  /* Override default CSS styles */
-  appearance: none;
-  width: 90%; /* Full-width */
-  height: 25px; /* Specified height */
-  background: #d3d3d3; /* Grey background */
-  outline: none; /* Remove outline */
-  opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
-  -webkit-transition: .2s; /* 0.2 seconds transition on hover */
-  transition: opacity .2s;
-}
-
-#size_indicator {
-	
+    -webkit-appearance: none;
+    appearance: none;
+    width: 90%;
+    height: 25px;
+    background: #d3d3d3;
+    outline: none;
+    opacity: 0.7;
 }

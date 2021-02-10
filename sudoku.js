@@ -11,7 +11,7 @@ class Node {
     }
 }
 
-class HeaderNode {
+class ColumnHead {
     constructor(id, l, type) {
         this.left = l;
         this.right = null;
@@ -19,7 +19,8 @@ class HeaderNode {
         this.down = null;
 
         this.type = type;
-        this.id = id; //either position, section or symbol	
+        this.id = id; //either position, section or symbol
+        this.size = 0; //number of nodes in this column
     }
 }
 
@@ -28,6 +29,12 @@ class Error {
         this.msg = msg;
     }
 }
+
+const ROOT = Symbol("root")
+const POSITION = Symbol("position");
+const ROW = Symbol("row");
+const COL = Symbol("col");
+const SECTION = Symbol("section");
 
 //based on Donald Knuth's Dancing Links algorithm
 
@@ -40,7 +47,7 @@ class Error {
 
 //assumes board is valid (or blank), and not solved; returns additions as a board-wide array
 //board must be either a string of 1 digit number with no spaces or an array, both of SZ*SZ elements long. 0 for blank space.
-function solve(SZ, board, sections) {
+function* solve(SZ, board, sections) {
     if (board.length != SZ * SZ) throw new Error("Bad size board");
     if (sections.length != SZ * SZ) throw new Error("Bad sections map size");
 
@@ -74,21 +81,17 @@ function solve(SZ, board, sections) {
         }
     }
 
-    //flags (4 per row):
-    // 1. position, SZ^2
-    // 2. symbol*col, SZ^2
-    // 3. symbol*row, SZ^2
-    // 4. symbol*section, SZ^2
-
-    // (x * SZ + sym) x SZ^2 | (y * SZ + sym) x SZ^2 | (section * SZ + sym) x SZ^2 |
-    //the location nodes mark the place where each of the SZ items is located,
-    //while the name node tells what number(label) each item is.
+    //4 types of columns, of which there are SZ^2 columns each (packed together)
+    // 1. position - constraint of one symbol per position
+    // 2. symbol and column - constraint of one symbol of that value per column
+    // 3. symbol and row - constraint of one symbol of that value per row
+    // 4. symbol and section - constraint of one symbol of that value per section
 
     let cols = SZ * SZ * 4; //in the matrix
 
     //the root exists on the top row, to the left of the leftmost header node.
     //it has no up/down links, but otherwise is a normal header node
-    let root = new HeaderNode("root", null, "root");
+    let root = new ColumnHead(0, null, ROOT);
 
     //the top row, to the right of the root, is the header nodes, one for every column
     let header = new Array(cols);
@@ -99,16 +102,16 @@ function solve(SZ, board, sections) {
         let j = i % (SZ * SZ);
         switch ((i / (SZ * SZ)) | 0) {
             case 0:
-                n = new HeaderNode(j, h, "position");
+                n = new ColumnHead(j, h, POSITION);
                 break;
             case 1:
-                n = new HeaderNode(j, h, "row");
+                n = new ColumnHead(j, h, ROW);
                 break;
             case 2:
-                n = new HeaderNode(j, h, "col");
+                n = new ColumnHead(j, h, COL);
                 break;
             case 3:
-                n = new HeaderNode(j, h, "section");
+                n = new ColumnHead(j, h, SECTION);
                 break;
         }
         header[i] = n;
@@ -123,7 +126,7 @@ function solve(SZ, board, sections) {
     for (let i = 0; i < cols; i++) ruler[i] = header[i];
 
     //sym is 0 based here
-    let insert = function(x, y, section, sym) {
+    let insert = (x, y, section, sym) => {
         //column of each node
         let pi = y * SZ + x;
         let ri = x * SZ + sym + SZ * SZ;
@@ -134,18 +137,22 @@ function solve(SZ, board, sections) {
         let posFlag = new Node(header[pi], null, ruler[pi]);
         posFlag.up = ruler[pi];
         ruler[pi].down = posFlag;
+        header[pi].size++;
 
         let rowFlag = new Node(header[ri], posFlag, ruler[ri]);
         rowFlag.up = ruler[ri];
         ruler[ri].down = rowFlag;
+        header[ri].size++;
 
         let colFlag = new Node(header[ci], rowFlag, ruler[ci]);
         colFlag.up = ruler[ci];
         ruler[ci].down = colFlag;
+        header[ci].size++;
 
         let quadFlag = new Node(header[si], colFlag, ruler[si]);
         quadFlag.up = ruler[si];
         ruler[si].down = quadFlag;
+        header[si].size++;
 
         posFlag.left = quadFlag;
         posFlag.right = rowFlag;
@@ -237,15 +244,9 @@ function solve(SZ, board, sections) {
     let complete = new Array(SZ * SZ);
     for (let i = 0; i < SZ * SZ; i++) complete[i] = 0;
 
-    //a container to hold whether the thing was solved
-    let solved = {
-        done: false
-    };
-
-    let solutionRows = new Array(cols); //references to rows
-    solveSearch(SZ, root, 0, solutionRows, complete, solved);
-
-    return complete;
+    let solutionRows = new Array(SZ * SZ); //references to rows
+    //yields the same reference to complete everytime but with different contents
+    yield* solveSearch(SZ, root, 0, solutionRows, complete);
 }
 
 function cover(column) {
@@ -258,6 +259,7 @@ function cover(column) {
             //remove each cell
             c.up.down = c.down;
             c.down.up = c.up;
+            c.header.size--;
         }
     }
 }
@@ -267,6 +269,7 @@ function uncover(column) {
         for (let r = c.left; r != c; r = r.left) {
             r.up.down = r;
             r.down.up = r;
+            r.header.size++;
         }
     }
 
@@ -274,9 +277,7 @@ function uncover(column) {
     column.left.right = column;
 }
 
-function solveSearch(SZ, root, k, partial, solution, done) {
-    if (done.done) return;
-
+function* solveSearch(SZ, root, k, partial, solution) {
     if (root.right == root || root.left == root) {
         //solution found
 
@@ -284,7 +285,7 @@ function solveSearch(SZ, root, k, partial, solution, done) {
             let n = partial[i];
 
             //get the symbol flag
-            while (n.header.type != "section") n = n.left;
+            while (n.header.type != SECTION) n = n.left;
             let sym = n.header.id % SZ + 1;
             n = n.right;
 
@@ -292,27 +293,28 @@ function solveSearch(SZ, root, k, partial, solution, done) {
             solution[n.header.id] = sym;
         }
 
-        done.done = true;
-        return;
+        yield solution;
+    } else {
+        // pick the column with the fewest nodes uncovered
+        let col = root.right;
+        for (let c = root.right; c != root; c = c.right) {
+            if (c.size < col.size) col = c;
+        }
+
+        cover(col);
+
+        for (let row = col.down; row != col; row = row.down) {
+            partial[k] = row;
+
+            for (let n = row.right; n != row; n = n.right)
+                cover(n.header);
+
+            yield* solveSearch(SZ, root, k + 1, partial, solution);
+
+            for (let n = row.left; n != row; n = n.left)
+                uncover(n.header);
+        }
+
+        uncover(col);
     }
-
-    // this is supposed to pick the column with the fewest nodes uncovered, but I couldn't get that working in my previous implementation
-    // and it's fast enough anyway
-    let col = root.right;
-
-    cover(col);
-
-    for (let row = col.down; row != col; row = row.down) {
-        partial[k] = row;
-
-        for (let n = row.right; n != row; n = n.right)
-            cover(n.header);
-
-        solveSearch(SZ, root, k + 1, partial, solution, done);
-
-        for (let n = row.left; n != row; n = n.left)
-            uncover(n.header);
-    }
-
-    uncover(col);
 }
