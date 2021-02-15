@@ -491,8 +491,9 @@ function validateData(size, sections, board) {
 }
 
 function makeHash(sections, board) {
-    return (sections.map(s => s.toString(maxSize)).join("") +
-        "-" + board.map(s => s.toString(maxCellBase)).join(""));
+    //return (sections.map(s => s.toString(maxSize)).join("") +
+    //    "-" + board.map(s => s.toString(maxCellBase)).join(""));
+    return encode(Math.sqrt(sections.length), sections, board);
 }
 
 function parseHash(str) {
@@ -610,13 +611,25 @@ window.onload = () => {
         }
     }
 
-    //e.g. 0011112222333000111222333300001112333330001112223777404455262777744455566677774445556667bb7444556666bbbb48895566aaabb888995ccaaabb889999ccccaab888999cccaabb888999ccccaaa-0a00d300700904000000c07b00600d00c0308000bc20040000000040000000000070580300000005b000200000003000005020080000a000450000c0000000d030b000090000000040002d080000000056a000000
-    if (window.location.hash) {
-        let p = parseHash(window.location.hash);
-        if (p) {
-            let [size, section, data] = p;
-            board.setGrid(size, section, data);
-            sizeSlider.value = size;
+    //e.g. DQEGBAQEBAUFBQUFBQUGBEA++++iIiZkfffRETMyH330TMzI+++iInOc0qruMRnOc1VXd4xjOc5qqu7xjGe9zVVd4xjHe97Wtbu8Y5zne61re797nOd7rW97373vc53Wtb3v3vc53uta3vfve9znHD+TJtQHmemD88lod9BQBQAMr0kBfRACQWg0HBVh4B+l0NgFCP2gC8cA
+    let hash = window.location.hash;
+    if (hash) {
+        if (hash.charAt(0) == '#') {
+            hash = hash.substr(1);
+        }
+        try {
+            let size, section, data;
+            if (window.location.hash.indexOf("-") > 0) {
+                [size, section, data] = parseHash(hash)
+            } else {
+                [size, section, data] = decode(hash);
+            }
+            if (validateData(size, section, data)) {
+                board.setGrid(size, section, data);
+                sizeSlider.value = size;
+            }
+        } catch (e) {
+            console.log("failed to decode hash", e);
         }
     } else {
         board.setSize(9);
@@ -632,4 +645,6 @@ window.onload = () => {
     //update 10 times per second
     //TODO: paint only when necessary
     window.setInterval(() => { board.update() }, 100);
+
+    //codingTest();
 }
