@@ -533,7 +533,7 @@ class Board {
         let sym = 0;
         for (let button of uiElems.symButtonFrame.children) {
             // @ts-ignore
-            button.hidden = (sym >= this.state.size ||
+            button.hidden = (sym > this.state.size ||
                 sym == this.state.board[this.state.selectorX + this.state.selectorY * this.state.size] ||
                 changeErrors(this.state.size, this.state.section, this.state.board,
                     this.state.selectorX, this.state.selectorY, sym).size > 0);
