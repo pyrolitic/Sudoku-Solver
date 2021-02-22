@@ -1,13 +1,25 @@
 "use strict";
 
+/**
+ * @param {number} code
+ * @param {number} len
+ */
 function reprCode(code, len) {
     let rep = code.toString(2);
     return "0".repeat(len - rep.length) + rep;
 }
 
+/**
+ * @param {number} maxSym
+ * @param {Map<number, number>} freq
+ * @returns {number[]}
+ */
 function freqToCodeLengths(maxSym, freq) {
     if (freq.size == 0) return [];
     // [weight, sub-branches or value]
+    /**
+     * @type any[][]
+     */
     let branches = Array.from(freq.entries()).map(([v, w]) => [w, v]);
     while (branches.length > 1) {
         // sort in reverse order
@@ -40,7 +52,10 @@ function freqToCodeLengths(maxSym, freq) {
     return code_lengths;
 }
 
-function lengthsToHuffTree(code_len, decoding) {
+/**
+ * @param {number[]} code_len
+ */
+function* lengthsToHuffTree(code_len) {
     let code_len_freq = new Map();
     count(code_len_freq, code_len);
     code_len_freq.set(0, 0); // symbols that don't appear will have 0 length but don't count them
@@ -53,26 +68,47 @@ function lengthsToHuffTree(code_len, decoding) {
         code = (code + prev_len) << 1;
         next_code[bits] = code;
     }
-    let dict = new Map();
     for (let sym = 0; sym < code_len.length; sym++) {
         let len = code_len[sym];
         if (len > 0) {
-            //console.log(`code ${reprCode(next_code[len], len)} for ${sym}`);
-            let code = next_code[len]
-            if (decoding) {
-                // include length in key to make it possible to disambiguate codes with matching prefixes
-                code |= (len << ml);
-                dict.set(code, sym);
-            } else {
-                dict.set(sym, [code, len]);
-            }
-
+            let code = next_code[len];
+            yield [sym, code, len];
             next_code[len]++;
         }
     }
-    return dict;
 }
 
+/**
+ * @param {number[]} code_len
+ * @returns {Map<number, number[]>}
+ */
+function lengthsToEncodingTree(code_len) {
+    let out = new Map();
+    for (let [sym, code, len] of lengthsToHuffTree(code_len)) {
+        out.set(sym, [code, len]);
+    }
+    return out;
+}
+
+/**
+ * @param {number[]} code_len
+ * @returns {Map<number, number>}
+ */
+function lengthsToDencodingTree(code_len) {
+    let out = new Map();
+    let ml = Math.max(...code_len);
+    for (let [sym, code, len] of lengthsToHuffTree(code_len)) {
+        // include length in key to make it possible to disambiguate codes with matching prefixes
+        out.set(code | (len << ml), sym);
+    }
+    return out;
+}
+
+/**
+ * @param {Map<number, number[]>} dic
+ * @param {number[]} vs
+ * @returns {[number[], number]}
+ */
 function huffenc(dic, vs) {
     let out = [];
     let acc = 0;
@@ -99,6 +135,13 @@ function huffenc(dic, vs) {
     return [out, bits_out];
 }
 
+/**
+ * @param {Map<number, number>} dic
+ * @param {number} max_len
+ * @param {number} enc_bits
+ * @param {number[]} data
+ * @returns {number[]}
+ */
 function huffdec(dic, max_len, enc_bits, data) {
     let out = [];
     let acc = 0;
@@ -123,6 +166,10 @@ function huffdec(dic, max_len, enc_bits, data) {
     return out;
 }
 
+/**
+ * @param {Map<number, number>} freq
+ * @param {number[]} vs
+ */
 function count(freq, vs) {
     for (let v of vs) {
         if (freq.has(v)) {
@@ -134,10 +181,14 @@ function count(freq, vs) {
 }
 
 const b64alp = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+// @ts-ignore
 const b64rev = new Map(Array.from(b64alp, c => [c, b64alp.indexOf(c)]).concat([
     ["=", 0]
 ]));
 
+/**
+ * @param {number[]} ar
+ */
 function b64enc(ar) {
     let out = '';
     let i = 0;
@@ -162,6 +213,9 @@ function b64enc(ar) {
     return out;
 }
 
+/**
+ * @param {string} st
+ */
 function b64dec(st) {
     if (st.length & 0x3) throw "base64 string should be a multiple of 4 characters long";
     if (!st.match(/^[A-Za-z0-9+/]+={0,2}$/)) throw "bad base64 string";
@@ -182,14 +236,19 @@ function b64dec(st) {
 // bytes size+2..size+3: enc_bits as U16 big endian
 // bytes size+4..end: packed huffman coded sections concatenated with board
 
-function encode(size, sections, board) {
+/**
+ * @param {number} size
+ * @param {number[]} sections
+ * @param {number[]} board
+ */
+function encodeHash(size, sections, board) {
     if (size < 1 || size > 255 || (size | 0) !== size) throw "invalid size";
     let together = sections.concat(board);
     let freq = new Map();
     count(freq, together);
 
     let code_lengths = freqToCodeLengths(size, freq);
-    let code_dict = lengthsToHuffTree(code_lengths, false);
+    let code_dict = lengthsToEncodingTree(code_lengths);
     let [enc, enc_bits] = huffenc(code_dict, together);
     if (enc_bits > 0xffff) throw "too many bits";
 
@@ -203,7 +262,11 @@ function encode(size, sections, board) {
 }
 
 //returns [size, sections, board] or null on failure
-function decode(b64) {
+/**
+ * @param {string} b64
+ * @returns {[number, number[], number[]]}
+ */
+function decodeHash(b64) {
     let ar = b64dec(b64);
     let size = ar[0];
     if (size < 1 || size > 255 || (size | 0) !== size) throw "invalid size";
@@ -213,13 +276,28 @@ function decode(b64) {
     if ((((enc_bits + 7) / 8) | 0) != enc_data.length) throw "invalid encoded data length";
 
     // decode data
-    let dec_dict = lengthsToHuffTree(code_lengths, true);
+    let dec_dict = lengthsToDencodingTree(code_lengths);
     let max_code_len = Math.max(...code_lengths);
     let together = huffdec(dec_dict, max_code_len, enc_bits, enc_data);
     if (together.length != 2 * size * size) throw "invalid decoded data length";
     let sections = together.slice(0, size * size);
     let board = together.slice(size * size);
     return [size, sections, board];
+}
+
+/**
+ * @param {string} str
+ * @returns {[number, number[], number[]]}
+ */
+function oldDecodeHash(str) {
+    let m = str.match(/^#?([A-Za-z0-9]+)-([A-Za-z0-9]+)$/);
+    if (m) {
+        let sections = m[1].split("").map(s => Number.parseInt(s, maxSize));
+        let board = m[2].split("").map(s => Number.parseInt(s, MaxCellBase));
+        let size = Math.sqrt(sections.length) | 0;
+        return [size, sections, board];
+    }
+    throw `failed to parse hash`;
 }
 
 function codingTest() {
@@ -241,8 +319,8 @@ function codingTest() {
             if (b64d[i] !== sect[i]) throw "bad base64 decoding";
         }
 
-        let enc = encode(sz, sect, board);
-        let [s, se, be] = decode(enc);
+        let enc = encodeHash(sz, sect, board);
+        let [s, se, be] = decodeHash(enc);
 
         if (s != sz) throw "bad size decoding";
         for (let i = 0; i < sz * sz; i++) {

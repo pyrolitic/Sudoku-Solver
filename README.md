@@ -3,20 +3,17 @@ Sudoku-Solver
 Client side javascript sudoku solver using dancing links. It was fun to write. It uses Canvas to draw the board,
 which doesn't seem to work in Internet explorer, even the latest version.
 
-sudoku.js is the solver back end.
-sudoku_ui.js is the front end.
-sudoku.html is the page definition.
-style.css is the stylesheet.
-
-
-Todo: show a warning when no solution was found, but the error is not immediately obvious to the front end. is it possible to point out what causes the conflict?
-
+`sudoku.js` is the solver back end, implementing Algorithm X. It's surprisingly short.
+`sudoku_ui.js` is the front end. It ended up being surprisingly complicated.
+`encoding.js` has base64 and huffman coding. Turns out `btoa` and `atob` do not work on binary data.
+`sudoku.html` is the page definition, though the editing buttons are added dynamically.
+`style.css` is the stylesheet.
 
 License
 =======
 The MIT License (MIT)
 
-Copyright (c) 2013 Jonathan Roșca
+Copyright (c) 2013, 2021 Jonathan Roșca
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

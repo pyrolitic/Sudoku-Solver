@@ -1,32 +1,32 @@
 "use strict";
 
-class Node {
+class MatrixNode {
+    /**
+     * @param {ColumnHead} head
+     * @param {MatrixNode} l
+     * @param {MatrixNode} t
+     */
     constructor(head, l, t) {
+        this.header = head;
         this.left = l;
         this.right = null;
         this.up = t;
         this.down = null;
-
-        this.header = head;
     }
 }
 
-class ColumnHead {
+class ColumnHead extends MatrixNode {
+    /**
+     * @param {number} id
+     * @param {ColumnHead} l
+     * @param {symbol} type
+     */
     constructor(id, l, type) {
-        this.left = l;
-        this.right = null;
-        this.up = null;
-        this.down = null;
-
+        super(null, l, null);
+        this.header = this;
         this.type = type;
         this.id = id; //either position, section or symbol
-        this.size = 0; //number of nodes in this column
-    }
-}
-
-class Error {
-    constructor(msg) {
-        this.msg = msg;
+        this.size = 0; //number of uncovered nodes in this column
     }
 }
 
@@ -47,9 +47,14 @@ const SECTION = Symbol("section");
 
 //assumes board is valid (or blank), and not solved; returns additions as a board-wide array
 //board must be either a string of 1 digit number with no spaces or an array, both of SZ*SZ elements long. 0 for blank space.
-function* solve(SZ, board, sections) {
-    if (board.length != SZ * SZ) throw new Error("Bad size board");
-    if (sections.length != SZ * SZ) throw new Error("Bad sections map size");
+/**
+ * @param {number} SZ
+ * @param {number[]} board
+ * @param {number[]} sections
+ */
+function* generateSolutions(SZ, board, sections) {
+    if (board.length != SZ * SZ) throw "Bad size board";
+    if (sections.length != SZ * SZ) throw "Bad sections map size";
 
     // validate sections
     let sectContents = new Array(SZ); //cells belonging to each section
@@ -69,7 +74,7 @@ function* solve(SZ, board, sections) {
         let y = (i / SZ) | 0;
         let n = sections[i];
         if (n < 0 || n >= SZ) {
-            throw new Error(`bad section identifier: ${n}`);
+            throw `bad section identifier: ${n}`;
         }
         sectContents[n].push([x, y]);
 
@@ -77,7 +82,7 @@ function* solve(SZ, board, sections) {
     let anySize = sectContents[0].length;
     for (let [, con] of sectContents.entries()) {
         if (con.length != anySize) {
-            throw new Error("section sizes do not match");
+            throw "section sizes do not match";
         }
     }
 
@@ -89,8 +94,8 @@ function* solve(SZ, board, sections) {
 
     let cols = SZ * SZ * 4; //in the matrix
 
-    //the root exists on the top row, to the left of the leftmost header node.
-    //it has no up/down links, but otherwise is a normal header node
+    //the root exists on the top row, to the left of the leftmost header MatrixNode.
+    //it has no up/down links, but otherwise is a normal header MatrixNode
     let root = new ColumnHead(0, null, ROOT);
 
     //the top row, to the right of the root, is the header nodes, one for every column
@@ -126,30 +131,36 @@ function* solve(SZ, board, sections) {
     for (let i = 0; i < cols; i++) ruler[i] = header[i];
 
     //sym is 0 based here
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {number} section
+     * @param {number} sym
+     */
     let insert = (x, y, section, sym) => {
-        //column of each node
+        //column of each MatrixNode
         let pi = y * SZ + x;
         let ri = x * SZ + sym + SZ * SZ;
         let ci = y * SZ + sym + SZ * SZ * 2;
         let si = section * SZ + sym + SZ * SZ * 3;
 
         //create nodes and link them to each other and ruler
-        let posFlag = new Node(header[pi], null, ruler[pi]);
+        let posFlag = new MatrixNode(header[pi], null, ruler[pi]);
         posFlag.up = ruler[pi];
         ruler[pi].down = posFlag;
         header[pi].size++;
 
-        let rowFlag = new Node(header[ri], posFlag, ruler[ri]);
+        let rowFlag = new MatrixNode(header[ri], posFlag, ruler[ri]);
         rowFlag.up = ruler[ri];
         ruler[ri].down = rowFlag;
         header[ri].size++;
 
-        let colFlag = new Node(header[ci], rowFlag, ruler[ci]);
+        let colFlag = new MatrixNode(header[ci], rowFlag, ruler[ci]);
         colFlag.up = ruler[ci];
         ruler[ci].down = colFlag;
         header[ci].size++;
 
-        let quadFlag = new Node(header[si], colFlag, ruler[si]);
+        let quadFlag = new MatrixNode(header[si], colFlag, ruler[si]);
         quadFlag.up = ruler[si];
         ruler[si].down = quadFlag;
         header[si].size++;
@@ -249,6 +260,9 @@ function* solve(SZ, board, sections) {
     yield* solveSearch(SZ, root, 0, solutionRows, complete);
 }
 
+/**
+ * @param {MatrixNode} column
+ */
 function cover(column) {
     //remove self
     column.right.left = column.left;
@@ -264,6 +278,9 @@ function cover(column) {
     }
 }
 
+/**
+ * @param {MatrixNode} column
+ */
 function uncover(column) {
     for (let c = column.up; c != column; c = c.up) {
         for (let r = c.left; r != c; r = r.left) {
@@ -277,6 +294,13 @@ function uncover(column) {
     column.left.right = column;
 }
 
+/**
+ * @param {number} SZ
+ * @param {MatrixNode} root
+ * @param {number} k
+ * @param {MatrixNode[]} partial
+ * @param {number[]} solution
+ */
 function* solveSearch(SZ, root, k, partial, solution) {
     if (root.right == root || root.left == root) {
         //solution found
