@@ -1,13 +1,13 @@
-Sudoku-Solver
+Sudoku solver
 =============
 Client side javascript sudoku solver using dancing links. It was fun to write. It uses Canvas to draw the board,
 which doesn't seem to work in Internet explorer, even the latest version.
 
-`sudoku.js` is the solver back end, implementing Algorithm X. It's surprisingly short.
-`sudoku_ui.js` is the front end. It ended up being surprisingly complicated.
-`encoding.js` has base64 and huffman coding. Turns out `btoa` and `atob` do not work on binary data.
-`sudoku.html` is the page definition, though the editing buttons are added dynamically.
-`style.css` is the stylesheet.
+- `sudoku.js` is the solver back end, implementing Algorithm X. It's surprisingly short.
+- `sudoku_ui.js` is the front end. It ended up being surprisingly complicated.
+- `encoding.js` has base64 and huffman coding. Turns out `btoa` and `atob` do not work on arbitrary binary data.
+- `sudoku.html` is the page definition, though the editing buttons are added dynamically.
+- `style.css` is the stylesheet.
 
 License
 =======
