@@ -347,8 +347,8 @@ class SizeChange extends Delta {
         state.section = makeSections(this.toSize);
         state.board = zfill(this.toSize * this.toSize);
         state.additions = zfill(this.toSize * this.toSize);
-        state.selectorX = Math.min(state.selectorX, this.toSize);
-        state.selectorY = Math.min(state.selectorY, this.toSize);
+        state.selectorX = Math.min(state.selectorX, this.toSize - 1);
+        state.selectorY = Math.min(state.selectorY, this.toSize - 1);
     }
 
     /**
